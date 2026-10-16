@@ -1,33 +1,50 @@
 """
 agent/graph.py — Assembles and executes the LangGraph Financial Research Agent.
-Exposes run_agent() which returns structured research matching the frontend contract.
+Implements a multi-agent star topology supervised workflow.
 """
 from langgraph.graph import StateGraph, START, END
 from agent.state import AgentState, create_initial_state
-from agent.nodes import resolve_ticker_node, fetch_data_node, synthesize_node
-from agent.router import route_after_fetch
+from agent.nodes import (
+    resolve_ticker_node,
+    supervisor_node,
+    quant_agent_node,
+    sentiment_agent_node,
+    fundamental_agent_node,
+    synthesize_node,
+)
+from agent.router import route_supervisor
 from agent.config import logger
 
 
 def build_graph():
-    """Build and compile the LangGraph workflow."""
+    """Build and compile the multi-agent Supervisor-Worker workflow."""
     workflow = StateGraph(AgentState)
 
-    workflow.add_node("resolve_ticker", resolve_ticker_node)
-    workflow.add_node("fetch_data", fetch_data_node)
-    workflow.add_node("synthesize", synthesize_node)
+    workflow.add_node("ResolveTicker", resolve_ticker_node)
+    workflow.add_node("Supervisor", supervisor_node)
+    workflow.add_node("quant_agent", quant_agent_node)
+    workflow.add_node("sentiment_agent", sentiment_agent_node)
+    workflow.add_node("fundamental_agent", fundamental_agent_node)
+    workflow.add_node("Synthesizer", synthesize_node)
 
-    workflow.add_edge(START, "resolve_ticker")
-    workflow.add_edge("resolve_ticker", "fetch_data")
+    workflow.add_edge(START, "ResolveTicker")
+    workflow.add_edge("ResolveTicker", "Supervisor")
+
     workflow.add_conditional_edges(
-        "fetch_data",
-        route_after_fetch,
+        "Supervisor",
+        route_supervisor,
         {
-            "synthesize": "synthesize",
-            "fallback": "synthesize",
-        }
+            "quant_agent": "quant_agent",
+            "sentiment_agent": "sentiment_agent",
+            "fundamental_agent": "fundamental_agent",
+            "Synthesizer": "Synthesizer",
+        },
     )
-    workflow.add_edge("synthesize", END)
+
+    workflow.add_edge("quant_agent", "Supervisor")
+    workflow.add_edge("sentiment_agent", "Supervisor")
+    workflow.add_edge("fundamental_agent", "Supervisor")
+    workflow.add_edge("Synthesizer", END)
 
     return workflow.compile()
 

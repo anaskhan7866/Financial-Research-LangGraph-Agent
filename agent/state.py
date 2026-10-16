@@ -2,7 +2,8 @@
 agent/state.py — Strongly typed state definition for the LangGraph agent (Rule 6).
 Every key has an explicit type and default value.
 """
-from typing import TypedDict, Optional, List, Dict, Any
+import operator
+from typing import TypedDict, Optional, List, Dict, Any, Annotated
 
 
 class AgentState(TypedDict):
@@ -14,7 +15,9 @@ class AgentState(TypedDict):
     indicators: Dict[str, Any]
     news: List[Dict[str, Any]]
     fundamentals: Dict[str, Any]
-    messages: List[Dict[str, str]]
+    messages: Annotated[List[Dict[str, str]], operator.add]
+    next_worker: str
+    sender: str
     iterations: int
     final_answer: str
     error: Optional[str]
@@ -32,7 +35,10 @@ def create_initial_state(query: str, ticker: str = "") -> AgentState:
         "news": [],
         "fundamentals": {},
         "messages": [],
+        "next_worker": "",
+        "sender": "",
         "iterations": 0,
         "final_answer": "",
         "error": None,
     }
+

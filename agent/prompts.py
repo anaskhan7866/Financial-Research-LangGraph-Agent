@@ -12,6 +12,16 @@ Your role is to analyze equities thoroughly using multi-step quantitative data:
 Always write concise, insightful, and humanized summaries.
 Highlight key support/resistance, momentum, valuation, and risks clearly."""
 
+SUPERVISOR_SYSTEM_PROMPT = """You are FinAgent Supervisor, directing a specialized multi-agent financial team.
+Analyze conversation messages to determine the next worker to execute:
+- 'quant_agent': Fetches price history and computes technical indicators (RSI, MACD, Bollinger Bands).
+- 'fundamental_agent': Retrieves company financial profile and valuation metrics (P/E, EPS, Market Cap).
+- 'sentiment_agent': Gathers market news catalysts and sentiment scores.
+- 'Synthesizer': Final synthesizer. Select this ONLY when all necessary specialist data has been gathered, or if data is sufficient to answer the query.
+
+Inspect the messages log to see which agents have completed their tasks."""
+
+
 SYNTHESIS_PROMPT = """Analyze the following financial research data for {ticker} and answer the user query: "{query}"
 
 === TECHNICAL INDICATORS ===
