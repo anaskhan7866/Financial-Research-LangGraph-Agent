@@ -7,7 +7,7 @@ from django.db import models
 
 class ResearchSession(models.Model):
     """Stores past research runs and synthesised reports."""
-    ticker       = models.CharField(max_length=10, db_index=True)
+    ticker       = models.CharField(max_length=20, db_index=True)
     query        = models.TextField()
     summary      = models.TextField()
     indicators   = models.JSONField(default=dict, blank=True)

@@ -1,9 +1,9 @@
 """
-tools/fundamentals.py — Fetches company overview and valuation metrics.
-Uses Alpha Vantage OVERVIEW with 6-hour disk caching (Rule 5).
+tools/fundamentals.py — Fetches company overview and valuation metrics via yfinance.
+Extracts market cap, P/E, EPS, sector, and 52-week boundaries with disk caching (Rule 5).
 """
-import requests
-from agent.config import ALPHA_VANTAGE_BASE, ALPHA_VANTAGE_KEY, logger
+import yfinance as yf
+from agent.config import logger
 from tools.cache import get_cache, set_cache
 
 CACHE_TTL_FUNDAMENTALS = 21600  # 6 hours
@@ -31,28 +31,23 @@ def get_fundamentals(ticker: str) -> dict:
 
 
 def _fetch_fundamentals_from_api(ticker: str) -> dict:
-    """Fetch Alpha Vantage OVERVIEW endpoint."""
+    """Fetch valuation metrics from yfinance Ticker info."""
     try:
-        params = {
-            "function": "OVERVIEW",
-            "symbol": ticker,
-            "apikey": ALPHA_VANTAGE_KEY,
-        }
-        res = requests.get(ALPHA_VANTAGE_BASE, params=params, timeout=12)
-        raw = res.json()
-        if not raw or "Symbol" not in raw:
+        t = yf.Ticker(ticker)
+        info = getattr(t, "info", {}) or {}
+        if not info or not isinstance(info, dict):
             return {}
 
         return {
-            "market_cap": _format_large_number(raw.get("MarketCapitalization")),
-            "pe_ratio":   _format_decimal(raw.get("PERatio"), 1),
-            "eps":        f"${_format_decimal(raw.get('EPS'), 2)}",
-            "sector":     raw.get("Sector", "N/A"),
-            "52w_high":   f"${_format_decimal(raw.get('52WeekHigh'), 2)}",
-            "52w_low":    f"${_format_decimal(raw.get('52WeekLow'), 2)}",
+            "market_cap": _format_large_number(info.get("marketCap")),
+            "pe_ratio": _format_decimal(info.get("trailingPE"), 1),
+            "eps": _format_currency(info.get("trailingEps"), 2),
+            "sector": str(info.get("sector") or "N/A"),
+            "52w_high": _format_currency(info.get("fiftyTwoWeekHigh"), 2),
+            "52w_low": _format_currency(info.get("fiftyTwoWeekLow"), 2),
         }
     except Exception as e:
-        logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+        logger.error(f"Error fetching fundamentals from yfinance for {ticker}: {e}")
         return {}
 
 
@@ -79,13 +74,19 @@ def _format_decimal(val, decimals: int = 2) -> str:
         return "N/A"
 
 
+def _format_currency(val, decimals: int = 2) -> str:
+    """Safely format currency value, returning N/A if missing."""
+    dec = _format_decimal(val, decimals)
+    return f"${dec}" if dec != "N/A" else "N/A"
+
+
 def _generate_fallback_fundamentals(ticker: str) -> dict:
-    """Fallback values when API limit reached."""
+    """Fallback values when API data unavailable."""
     return {
         "market_cap": "$1.45T",
-        "pe_ratio":   "26.5",
-        "eps":        "$5.80",
-        "sector":     "Technology",
-        "52w_high":   "$210.50",
-        "52w_low":    "$145.20",
+        "pe_ratio": "26.5",
+        "eps": "$5.80",
+        "sector": "Technology",
+        "52w_high": "$210.50",
+        "52w_low": "$145.20",
     }

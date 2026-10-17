@@ -33,7 +33,7 @@ def _format_final_result(final_state: dict, query: str, ticker: str) -> dict:
         "summary": final_state.get("final_answer", "No summary generated."),
         "is_fallback": is_fb,
         "warning": (
-            "⚠️ Alpha Vantage daily free limit reached. Displaying cached/modeled fallback data to keep your analysis uninterrupted."
+            "⚠️ Market data provider temporarily unavailable. Displaying cached/modeled fallback data to keep your analysis uninterrupted."
             if is_fb else None
         ),
     }
@@ -81,10 +81,12 @@ def analyze(request):
             return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
 
         query = str(body.get("query", "")).strip()
-        ticker = str(body.get("ticker", "AAPL")).strip().upper() or "AAPL"
+        ticker = str(body.get("ticker", "AAPL")).strip().upper()[:20] or "AAPL"
 
         if not query:
             return JsonResponse({"error": "Query cannot be empty."}, status=400)
+        if len(query) > 500:
+            return JsonResponse({"error": "Query is too long (maximum 500 characters)."}, status=400)
 
         # Stream real-time execution steps if requested by frontend
         accept_header = request.headers.get("Accept", "")

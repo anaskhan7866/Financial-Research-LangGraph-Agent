@@ -1,14 +1,14 @@
 """
-tests/test_tools_mocked.py — Unit tests with mocked network responses.
-Validates data tool parsing and formatting without relying on live network or API quotas.
+tests/test_tools_mocked.py — Unit tests with mocked yfinance responses.
+Validates data tool parsing and formatting without relying on live network or external quotas.
 """
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from pathlib import Path
+import pandas as pd
 
-# Add project root to sys.path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
@@ -23,74 +23,72 @@ from tools.fundamentals import get_fundamentals
 
 
 class TestToolsMocked(unittest.TestCase):
-    """Test tools using mocked external HTTP requests."""
+    """Test data tools using mocked yfinance structures."""
 
-    @patch("tools.search_ticker.requests.get")
-    def test_search_ticker_parsing(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "bestMatches": [
-                {"1. symbol": "NVDA", "2. name": "NVIDIA Corporation"}
-            ]
-        }
-        mock_get.return_value = mock_resp
+    def test_search_ticker_parsing(self):
+        """Test ticker symbol lookup, Indian formats, and keyword heuristics."""
+        self.assertEqual(search_ticker("NVDA"), "NVDA")
+        self.assertEqual(search_ticker("RELIANCE.NS"), "RELIANCE.NS")
+        self.assertEqual(search_ticker("TCS.BO"), "TCS.BO")
+        self.assertEqual(search_ticker("Nvidia Corp"), "NVDA")
+        self.assertEqual(search_ticker("Analyze tata motors"), "TATAMOTORS.NS")
 
-        result = search_ticker("Nvidia Corp")
-        self.assertEqual(result, "NVDA")
+    @patch("tools.price_fetch.yf.Ticker")
+    def test_price_fetch_parsing(self, mock_ticker):
+        """Test OHLCV history extraction and DataFrame formatting."""
+        dates = pd.to_datetime(["2026-03-01", "2026-03-02"])
+        mock_df = pd.DataFrame({
+            "Open": [100.0, 104.0],
+            "High": [105.0, 108.0],
+            "Low": [99.0, 103.0],
+            "Close": [104.0, 107.0],
+            "Volume": [50000.0, 60000.0],
+        }, index=dates)
+        mock_ticker.return_value.history.return_value = mock_df
 
-    @patch("tools.price_fetch.requests.get")
-    def test_price_fetch_parsing(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "Time Series (Daily)": {
-                "2026-03-01": {"1. open": "100", "2. high": "105", "3. low": "99", "4. close": "104", "5. volume": "50000"},
-                "2026-03-02": {"1. open": "104", "2. high": "108", "3. low": "103", "4. close": "107", "5. volume": "60000"},
-            }
-        }
-        mock_get.return_value = mock_resp
-
-        # Bypass cache
         with patch("tools.price_fetch.get_cache", return_value=None):
             df = get_price_data("TEST_MOCK_TICKER")
             self.assertEqual(len(df), 2)
             self.assertEqual(df["close"].iloc[-1], 107.0)
+            self.assertIn("open", df.columns)
+            self.assertIn("volume", df.columns)
 
-    @patch("tools.news_fetch.requests.get")
-    def test_news_sentiment_translation(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "feed": [
-                {"title": "Breakthrough AI launch", "url": "https://example.com/1", "overall_sentiment_score": "0.45"},
-                {"title": "Regulatory scrutiny rises", "url": "https://example.com/2", "overall_sentiment_score": "-0.40"},
-            ]
-        }
-        mock_get.return_value = mock_resp
+    @patch("tools.news_fetch.yf.Ticker")
+    def test_news_sentiment_translation(self, mock_ticker):
+        """Test news headline mapping and Neutral sentiment contract."""
+        mock_ticker.return_value.news = [
+            {"title": "Breakthrough AI launch", "link": "https://example.com/1"},
+            {"title": "Regulatory scrutiny rises", "link": "https://example.com/2"},
+        ]
 
         with patch("tools.news_fetch.get_cache", return_value=None):
             news = get_news("TEST_NEWS_TICKER")
             self.assertEqual(len(news), 2)
-            self.assertEqual(news[0]["sentiment"], "Very Positive")
-            self.assertEqual(news[1]["sentiment"], "Very Negative")
+            self.assertEqual(news[0]["sentiment"], "Neutral")
+            self.assertEqual(news[0]["score"], 0.0)
+            self.assertEqual(news[0]["title"], "Breakthrough AI launch")
+            self.assertEqual(news[0]["url"], "https://example.com/1")
 
-    @patch("tools.fundamentals.requests.get")
-    def test_fundamentals_formatting(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "Symbol": "MSFT",
-            "MarketCapitalization": "3150000000000",
-            "PERatio": "34.2",
-            "EPS": "11.85",
-            "Sector": "Technology",
-            "52WeekHigh": "450.00",
-            "52WeekLow": "300.00",
+    @patch("tools.fundamentals.yf.Ticker")
+    def test_fundamentals_formatting(self, mock_ticker):
+        """Test fundamentals extraction and currency formatting."""
+        mock_ticker.return_value.info = {
+            "marketCap": 3150000000000,
+            "trailingPE": 34.2,
+            "trailingEps": 11.85,
+            "sector": "Technology",
+            "fiftyTwoWeekHigh": 450.00,
+            "fiftyTwoWeekLow": 300.00,
         }
-        mock_get.return_value = mock_resp
 
         with patch("tools.fundamentals.get_cache", return_value=None):
             fund = get_fundamentals("TEST_FUND_TICKER")
             self.assertEqual(fund["market_cap"], "$3.15T")
             self.assertEqual(fund["pe_ratio"], "34.2")
             self.assertEqual(fund["eps"], "$11.85")
+            self.assertEqual(fund["sector"], "Technology")
+            self.assertEqual(fund["52w_high"], "$450.00")
+            self.assertEqual(fund["52w_low"], "$300.00")
 
 
 if __name__ == "__main__":

@@ -34,8 +34,8 @@ class TestTickerNormalizationAudit(unittest.TestCase):
 
     def test_lowercase_and_company_name_resolution(self):
         """Ensure common company names map to appropriate tickers."""
-        self.assertEqual(search_ticker("reliance"), "RELIANCE.BSE")
-        self.assertEqual(search_ticker("tata motors"), "TATAMOTORS.BSE")
+        self.assertEqual(search_ticker("reliance"), "RELIANCE.NS")
+        self.assertEqual(search_ticker("tata motors"), "TATAMOTORS.NS")
         self.assertEqual(search_ticker("infosys"), "INFY")
         self.assertEqual(search_ticker("lenska"), "LENS")
 
@@ -44,22 +44,27 @@ class TestTickerNormalizationAudit(unittest.TestCase):
         self.assertEqual(search_ticker("  $aapl  "), "AAPL")
         self.assertEqual(search_ticker("$MSFT"), "MSFT")
 
+    def test_indian_ticker_format_acceptance(self):
+        """Ensure Indian market ticker extensions are accepted directly."""
+        self.assertEqual(search_ticker("RELIANCE.NS"), "RELIANCE.NS")
+        self.assertEqual(search_ticker("TCS.BO"), "TCS.BO")
+        self.assertEqual(search_ticker("INFY.BSE"), "INFY.BSE")
+
     def test_phrase_ticker_extraction(self):
         """Ensure company names within conversational queries are detected."""
-        self.assertEqual(search_ticker("Tell me about reliance industries"), "RELIANCE.BSE")
-        self.assertEqual(search_ticker("What is the trend for tata motors?"), "TATAMOTORS.BSE")
+        self.assertEqual(search_ticker("Tell me about reliance industries"), "RELIANCE.NS")
+        self.assertEqual(search_ticker("What is the trend for tata motors?"), "TATAMOTORS.NS")
 
-    @patch("tools.search_ticker.requests.get")
-    def test_api_failure_benchmark_fallback(self, mock_get):
-        """Ensure Alpha Vantage errors gracefully fallback to benchmark US ticker."""
-        mock_get.side_effect = Exception("Alpha Vantage API timeout")
+    def test_heuristic_benchmark_fallback(self):
+        """Ensure unknown queries fall back to US or Indian benchmark tickers."""
         self.assertEqual(search_ticker("UnknownNonexistentCompany"), "AAPL")
+        self.assertEqual(search_ticker("Unknown nifty company india"), "RELIANCE.NS")
 
     def test_resolve_ticker_node_sanitization(self):
         """Ensure resolve_ticker_node sanitizes lowercase ticker in state."""
         state = create_initial_state(query="Analyze reliance", ticker="reliance")
         result = resolve_ticker_node(state)
-        self.assertEqual(result["ticker"], "RELIANCE.BSE")
+        self.assertEqual(result["ticker"], "RELIANCE.NS")
 
 
 class TestSupervisorRoutingAudit(unittest.TestCase):

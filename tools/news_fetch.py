@@ -1,9 +1,9 @@
 """
-tools/news_fetch.py — Fetches recent market news and sentiment.
-Uses Alpha Vantage NEWS_SENTIMENT with 30-minute disk caching (Rule 5).
+tools/news_fetch.py — Fetches recent market news for equities via yfinance.
+Caches headlines with 30-minute disk caching to satisfy UI contracts (Rule 5).
 """
-import requests
-from agent.config import ALPHA_VANTAGE_BASE, ALPHA_VANTAGE_KEY, logger
+import yfinance as yf
+from agent.config import logger
 from tools.cache import get_cache, set_cache
 
 CACHE_TTL_NEWS = 1800  # 30 minutes
@@ -31,50 +31,59 @@ def get_news(ticker: str) -> list[dict]:
 
 
 def _fetch_news_from_api(ticker: str) -> list[dict]:
-    """Fetch and parse Alpha Vantage NEWS_SENTIMENT."""
+    """Fetch and parse news items from yfinance Ticker and Search."""
     try:
-        params = {
-            "function": "NEWS_SENTIMENT",
-            "tickers": ticker,
-            "limit": 5,
-            "apikey": ALPHA_VANTAGE_KEY,
-        }
-        res = requests.get(ALPHA_VANTAGE_BASE, params=params, timeout=12)
-        data = res.json()
-        feed = data.get("feed", [])
-        if not feed:
+        t = yf.Ticker(ticker)
+        news = getattr(t, "news", []) or []
+        if not news:
+            news = _fetch_search_news(ticker)
+
+        if not news:
             return []
 
         results = []
-        for item in feed[:4]:
-            score = float(item.get("overall_sentiment_score", 0.0))
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", "#"),
-                "sentiment": _score_to_label(score),
-                "score": round(score, 2),
-            })
+        for item in news[:5]:
+            title = _extract_news_title(item)
+            url = _extract_news_url(item)
+            if title:
+                results.append({
+                    "title": title,
+                    "url": url,
+                    "sentiment": "Neutral",
+                    "score": 0.0,
+                })
         return results
     except Exception as e:
-        logger.error(f"Error fetching news for {ticker}: {e}")
+        logger.error(f"Error fetching news from yfinance for {ticker}: {e}")
         return []
 
 
-def _score_to_label(score: float) -> str:
-    """Translate sentiment score to human-readable label."""
-    if score >= 0.35:
-        return "Very Positive"
-    if score >= 0.15:
-        return "Positive"
-    if score >= -0.15:
-        return "Neutral"
-    if score >= -0.35:
-        return "Negative"
-    return "Very Negative"
+def _fetch_search_news(ticker: str) -> list:
+    """Fallback search query to retrieve news when Ticker.news is empty."""
+    try:
+        search = yf.Search(ticker, news_count=5)
+        return getattr(search, "news", []) or []
+    except Exception:
+        return []
+
+
+def _extract_news_title(item: dict) -> str:
+    """Extract headline title from yfinance news dictionary."""
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("title") or item.get("content", {}).get("title", "")).strip()
+
+
+def _extract_news_url(item: dict) -> str:
+    """Extract article URL from yfinance news dictionary."""
+    if not isinstance(item, dict):
+        return "#"
+    canonical = item.get("content", {}).get("canonicalUrl", {}).get("url")
+    return str(item.get("link") or item.get("url") or canonical or "#").strip()
 
 
 def _generate_fallback_news(ticker: str) -> list[dict]:
-    """Fallback news headlines if API quota exhausted."""
+    """Fallback news headlines if API data unavailable."""
     return [
         {
             "title": f"{ticker} maintains steady trading amid sector momentum",

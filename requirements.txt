@@ -14,6 +14,7 @@ pandas>=2.2
 numpy>=1.26
 requests>=2.31
 httpx>=0.27
+yfinance>=0.2.30
 
 # ── Environment & Config ─────────────────────────────────────────
 python-dotenv>=1.0

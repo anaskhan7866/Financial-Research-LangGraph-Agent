@@ -1,10 +1,9 @@
 """
-tools/search_ticker.py — Resolves company names to stock ticker symbols.
-Uses Alpha Vantage SYMBOL_SEARCH with 24-hour disk caching (Rule 5).
+tools/search_ticker.py — Resolves company names and user queries to ticker symbols.
+Optimized for yfinance supporting US and Indian equities (.NS, .BO) (Rule 5).
 """
 import re
-import requests
-from agent.config import ALPHA_VANTAGE_BASE, ALPHA_VANTAGE_KEY, logger
+from agent.config import logger
 from tools.cache import get_cache, set_cache
 
 CACHE_TTL_TICKER = 86400  # 24 hours
@@ -20,13 +19,17 @@ COMMON_TICKERS = {
     "meta": "META",
     "facebook": "META",
     "netflix": "NFLX",
-    "reliance": "RELIANCE.BSE",
-    "reliance industries": "RELIANCE.BSE",
-    "tata motors": "TATAMOTORS.BSE",
-    "tata": "TATAMOTORS.BSE",
-    "tcs": "TCS.BSE",
+    "reliance": "RELIANCE.NS",
+    "reliance industries": "RELIANCE.NS",
+    "tata motors": "TATAMOTORS.NS",
+    "tata": "TATAMOTORS.NS",
+    "tcs": "TCS.NS",
     "infosys": "INFY",
-    "wipro": "WIPRO.BSE",
+    "wipro": "WIPRO.NS",
+    "hdfc": "HDFCBANK.NS",
+    "hdfc bank": "HDFCBANK.NS",
+    "icici": "ICICIBANK.NS",
+    "icici bank": "ICICIBANK.NS",
     "lenskart": "LENS",
     "lenska": "LENS",
     "ibm": "IBM",
@@ -40,50 +43,44 @@ def search_ticker(query: str) -> str:
         return "AAPL"
 
     cleaned = raw.lstrip("$").strip()
+    clean_upper = cleaned.upper()
     clean_lower = cleaned.lower()
 
+    # 1. Accept Indian ticker formats (e.g. RELIANCE.NS, TCS.BO, TATAMOTORS.BSE)
+    if re.match(r"^[A-Z0-9\-\_]{1,15}\.(NS|BO|BSE)$", clean_upper):
+        return clean_upper
+
+    # 2. Standard 1-5 letter US/Global tickers (e.g. AAPL, MSFT, INFY)
+    if cleaned.isalpha() and 1 <= len(cleaned) <= 5:
+        return clean_upper
+
+    # 3. Direct match in common companies dictionary
     if clean_lower in COMMON_TICKERS:
         return COMMON_TICKERS[clean_lower]
 
-    for name, sym in COMMON_TICKERS.items():
-        if re.search(rf"\b{re.escape(name)}\b", clean_lower):
-            return sym
-
-    if cleaned.isalpha() and 1 <= len(cleaned) <= 5:
-        return cleaned.upper()
-
+    # 4. Check cache
     cache_key = f"ticker_search_{clean_lower}"
     cached = get_cache(cache_key, CACHE_TTL_TICKER)
     if cached:
         return cached
 
-    ticker = _fetch_ticker_from_api(cleaned)
+    # 5. Extract from conversational query or fallback
+    ticker = _resolve_company_heuristics(clean_lower)
     set_cache(cache_key, ticker)
     return ticker
 
 
-def _fetch_ticker_from_api(query: str) -> str:
-    """Query Alpha Vantage SYMBOL_SEARCH endpoint with graceful US fallback."""
-    try:
-        params = {
-            "function": "SYMBOL_SEARCH",
-            "keywords": query,
-            "apikey": ALPHA_VANTAGE_KEY,
-        }
-        res = requests.get(ALPHA_VANTAGE_BASE, params=params, timeout=10)
-        data = res.json()
-        matches = data.get("bestMatches", [])
-        if matches:
-            best_symbol = matches[0].get("1. symbol", "").strip().upper()
-            if best_symbol:
-                logger.info(f"Resolved '{query}' to '{best_symbol}'")
-                return best_symbol
+def _resolve_company_heuristics(query_lower: str) -> str:
+    """Search common mappings or fallback to benchmark ticker."""
+    for name, sym in COMMON_TICKERS.items():
+        if re.search(rf"\b{re.escape(name)}\b", query_lower):
+            logger.info(f"Resolved '{query_lower}' to '{sym}' via keyword heuristic")
+            return sym
 
-        if "Note" in data or "Information" in data:
-            logger.warning(f"Alpha Vantage rate limit reached in search_ticker: {data}")
-    except Exception as e:
-        logger.error(f"Error searching ticker for '{query}': {e}")
+    # Check if query contains Indian indicators or defaults to US AAPL
+    if any(k in query_lower for k in ["india", "nifty", "bse", "nse"]):
+        logger.info(f"Fallback for '{query_lower}': using Indian benchmark RELIANCE.NS")
+        return "RELIANCE.NS"
 
-    # Fallback to standard US benchmark ticker if resolution fails
-    logger.info(f"Ticker resolution fallback for '{query}': using AAPL benchmark.")
+    logger.info(f"Fallback for '{query_lower}': using US benchmark AAPL")
     return "AAPL"

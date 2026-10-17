@@ -80,7 +80,7 @@ def run_agent(query: str, ticker: str = "") -> dict:
         "summary": final_state.get("final_answer", "No summary generated."),
         "is_fallback": is_fallback,
         "warning": (
-            "⚠️ Alpha Vantage daily free limit reached. Displaying cached/modeled fallback data to keep your analysis uninterrupted."
+            "⚠️ Market data provider temporarily unavailable. Displaying cached/modeled fallback data to keep your analysis uninterrupted."
             if is_fallback else None
         ),
     }
