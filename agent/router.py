@@ -17,6 +17,8 @@ def route_after_fetch(state: AgentState) -> str:
 
 def route_supervisor(state: AgentState) -> str:
     """Route from Supervisor to the chosen worker or Synthesizer."""
+    if state.get("iterations", 0) >= MAX_ITERATIONS:
+        return "Synthesizer"
     worker = (state.get("next_worker") or "").strip()
     mapping = {
         "quant_agent": "quant_agent",
@@ -30,4 +32,3 @@ def route_supervisor(state: AgentState) -> str:
         "synthesize": "Synthesizer",
     }
     return mapping.get(worker, "Synthesizer")
-

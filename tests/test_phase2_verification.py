@@ -125,18 +125,11 @@ class TestDjangoViews(unittest.TestCase):
     def test_analyze_endpoint_valid_request(self):
         """POST /analyze/ should return structured research output."""
         payload = {"ticker": "MSFT", "query": "Analyze Microsoft fundamentals"}
-        res = self.client.post(
-            "/analyze/",
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        res = self.client.post("/analyze/", data=json.dumps(payload), content_type="application/json")
         self.assertEqual(res.status_code, 200)
         data = res.json()
-
-        # Check all required contract fields
         for field in ["ticker", "query", "steps", "fundamentals", "indicators", "news", "summary"]:
             self.assertIn(field, data, f"Missing expected field '{field}' in response")
-
         self.assertEqual(data["ticker"], "MSFT")
         self.assertTrue(len(data["steps"]) > 0)
         self.assertIn("market_cap", data["fundamentals"])
@@ -144,32 +137,19 @@ class TestDjangoViews(unittest.TestCase):
 
     def test_analyze_empty_query_returns_400(self):
         """POST /analyze/ with empty query should return 400 Bad Request."""
-        payload = {"ticker": "AAPL", "query": "   "}
-        res = self.client.post(
-            "/analyze/",
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        res = self.client.post("/analyze/", data=json.dumps({"ticker": "AAPL", "query": "   "}), content_type="application/json")
         self.assertEqual(res.status_code, 400)
         self.assertIn("error", res.json())
 
     def test_analyze_malformed_json_returns_400(self):
         """POST /analyze/ with malformed JSON should return 400."""
-        res = self.client.post(
-            "/analyze/",
-            data="not-a-json",
-            content_type="application/json"
-        )
+        res = self.client.post("/analyze/", data="not-a-json", content_type="application/json")
         self.assertEqual(res.status_code, 400)
         self.assertIn("error", res.json())
 
     def test_analyze_non_dict_body_returns_400(self):
         """POST /analyze/ with non-dict JSON should return 400."""
-        res = self.client.post(
-            "/analyze/",
-            data=json.dumps([1, 2, 3]),
-            content_type="application/json"
-        )
+        res = self.client.post("/analyze/", data=json.dumps([1, 2, 3]), content_type="application/json")
         self.assertEqual(res.status_code, 400)
 
     def test_analyze_get_method_not_allowed(self):
@@ -199,24 +179,16 @@ class TestUIContractAndStaticAssets(unittest.TestCase):
         """Ensure every DOM ID used in main.js is defined in index.html."""
         base_dir = Path(__file__).resolve().parent.parent
         html_content = (base_dir / "dashboard" / "templates" / "dashboard" / "index.html").read_text(encoding="utf-8")
-
         required_ids = [
-            "queryForm", "tickerInput", "queryInput", "runBtn",
-            "progressSection", "progressTitle", "stepsList", "agentSpinner",
-            "resultsSection", "emptyState", "clock", "sidebar", "burgerBtn",
-            "resultTicker", "resultPrice", "resultSignal",
-            "indicatorsGrid", "fundamentalsGrid", "newsList", "summaryText",
-            "copyBtn", "newQueryBtn", "historySection", "historyList",
-            "watchlistSection", "watchlistList", "pinTickerBtn", "priceSparkline"
+            "queryForm", "tickerInput", "queryInput", "runBtn", "progressSection", "progressTitle",
+            "stepsList", "agentSpinner", "resultsSection", "emptyState", "clock", "sidebar",
+            "burgerBtn", "resultTicker", "resultPrice", "resultSignal", "indicatorsGrid",
+            "fundamentalsGrid", "newsList", "summaryText", "copyBtn", "newQueryBtn",
+            "historySection", "historyList", "watchlistSection", "watchlistList",
+            "pinTickerBtn", "priceSparkline"
         ]
-
         for elem_id in required_ids:
-            expected_pattern = f'id="{elem_id}"'
-            self.assertIn(
-                expected_pattern,
-                html_content,
-                f"ID '{elem_id}' required by main.js was not found in index.html"
-            )
+            self.assertIn(f'id="{elem_id}"', html_content, f"ID '{elem_id}' not found in index.html")
 
 
 if __name__ == "__main__":

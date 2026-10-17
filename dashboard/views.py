@@ -7,6 +7,7 @@ from django.shortcuts import render
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
 from agent.graph import run_agent, agent_app
 from agent.state import create_initial_state
 from agent.nodes import check_fallback_data
@@ -119,18 +120,23 @@ def history(request):
 
 
 def _persist_session(ticker: str, query: str, data: dict):
-    """Save completed research session to database safely."""
+    """Save completed research session to database safely (Phase 7)."""
     try:
-        ResearchSession.objects.create(
-            ticker=ticker,
-            query=query,
-            summary=data.get("summary", ""),
-            indicators=data.get("indicators", {}),
-            fundamentals=data.get("fundamentals", {}),
-            news=data.get("news", []),
-        )
-        old_ids = ResearchSession.objects.values_list("id", flat=True)[50:]
-        if old_ids:
-            ResearchSession.objects.filter(id__in=list(old_ids)).delete()
+        with transaction.atomic():
+            ResearchSession.objects.create(
+                ticker=ticker,
+                query=query,
+                summary=data.get("summary", ""),
+                indicators=data.get("indicators", {}),
+                fundamentals=data.get("fundamentals", {}),
+                news=data.get("news", []),
+            )
+            if ResearchSession.objects.count() > 50:
+                old_ids = list(
+                    ResearchSession.objects.order_by("-created_at")
+                    .values_list("id", flat=True)[50:]
+                )
+                if old_ids:
+                    ResearchSession.objects.filter(id__in=old_ids).delete()
     except Exception as err:
         logger.warning(f"Could not save research session: {err}")
