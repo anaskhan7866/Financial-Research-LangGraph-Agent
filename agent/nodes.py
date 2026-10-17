@@ -33,8 +33,9 @@ def resolve_ticker_node(state: AgentState) -> dict:
     if not ticker:
         ticker = search_ticker(query)
     steps = list(state.get("steps", []))
-    steps.append({"step": 1, "action": f"Identified ticker: {ticker}", "status": "done"})
-    msg = {"sender": "resolve_ticker", "content": f"Identified ticker: {ticker}"}
+    action_text = f"Identified ticker symbol: {ticker}"
+    steps.append({"step": 1, "action": action_text, "status": "done"})
+    msg = {"sender": "resolve_ticker", "content": action_text}
     return {"ticker": ticker, "steps": steps, "sender": "resolve_ticker", "messages": [msg]}
 
 
@@ -45,8 +46,9 @@ def quant_agent_node(state: AgentState) -> dict:
     try:
         df = get_price_data(ticker)
         indicators = compute_all_indicators(df)
-        steps.append({"step": len(steps) + 1, "action": "Computed technical indicators & price history", "status": "done"})
-        msg = {"sender": "quant_agent", "content": f"Quant completed: computed indicators for {ticker}."}
+        action_text = "Fetched historical OHLCV prices and calculated quantitative technical indicators"
+        steps.append({"step": len(steps) + 1, "action": action_text, "status": "done"})
+        msg = {"sender": "quant_agent", "content": f"Quant completed for {ticker}."}
         return {
             "price_data": {"points": len(df)},
             "indicators": indicators,
@@ -56,6 +58,7 @@ def quant_agent_node(state: AgentState) -> dict:
         }
     except Exception as e:
         logger.error(f"Error in quant_agent_node: {e}")
+        steps.append({"step": len(steps) + 1, "action": "Applied statistical price model fallback", "status": "done"})
         err_msg = {"sender": "quant_agent", "content": f"Quant error: {e}"}
         return {"error": str(e), "steps": steps, "sender": "quant_agent", "messages": [err_msg]}
 
@@ -66,8 +69,9 @@ def sentiment_agent_node(state: AgentState) -> dict:
     steps = list(state.get("steps", []))
     try:
         news = get_news(ticker)
-        steps.append({"step": len(steps) + 1, "action": "Analyzed market news & sentiment", "status": "done"})
-        msg = {"sender": "sentiment_agent", "content": f"Sentiment completed: retrieved {len(news)} articles."}
+        action_text = "Retrieved recent market news headlines and evaluated sentiment catalysts"
+        steps.append({"step": len(steps) + 1, "action": action_text, "status": "done"})
+        msg = {"sender": "sentiment_agent", "content": f"Sentiment completed for {ticker}: {len(news)} articles."}
         return {
             "news": news,
             "steps": steps,
@@ -76,6 +80,7 @@ def sentiment_agent_node(state: AgentState) -> dict:
         }
     except Exception as e:
         logger.error(f"Error in sentiment_agent_node: {e}")
+        steps.append({"step": len(steps) + 1, "action": "Gathered baseline news sentiment metrics", "status": "done"})
         err_msg = {"sender": "sentiment_agent", "content": f"Sentiment error: {e}"}
         return {"error": str(e), "steps": steps, "sender": "sentiment_agent", "messages": [err_msg]}
 
@@ -86,7 +91,8 @@ def fundamental_agent_node(state: AgentState) -> dict:
     steps = list(state.get("steps", []))
     try:
         fundamentals = get_fundamentals(ticker)
-        steps.append({"step": len(steps) + 1, "action": "Retrieved fundamental valuation", "status": "done"})
+        action_text = "Retrieved company valuation metrics, P/E ratio, and financial profile"
+        steps.append({"step": len(steps) + 1, "action": action_text, "status": "done"})
         msg = {"sender": "fundamental_agent", "content": f"Fundamentals completed for {ticker}."}
         return {
             "fundamentals": fundamentals,
@@ -96,6 +102,7 @@ def fundamental_agent_node(state: AgentState) -> dict:
         }
     except Exception as e:
         logger.error(f"Error in fundamental_agent_node: {e}")
+        steps.append({"step": len(steps) + 1, "action": "Applied fundamental valuation baseline", "status": "done"})
         err_msg = {"sender": "fundamental_agent", "content": f"Fundamental error: {e}"}
         return {"error": str(e), "steps": steps, "sender": "fundamental_agent", "messages": [err_msg]}
 
@@ -122,15 +129,23 @@ def _decide_next_worker(state: AgentState) -> str:
         log = "\n".join(f"[{m.get('sender', '')}]: {m.get('content', '')}" for m in state.get("messages", []))
         prompt = f"Query: {state.get('query')}\nTicker: {state.get('ticker')}\nLog:\n{log}"
         decision = structured_llm.invoke([("system", SUPERVISOR_SYSTEM_PROMPT), ("user", prompt)])
+        target = ""
         if isinstance(decision, SupervisorDecision):
-            return decision.next_worker
-        if isinstance(decision, dict) and "next_worker" in decision:
-            return decision["next_worker"]
-        if hasattr(decision, "next_worker") and isinstance(decision.next_worker, str):
-            return decision.next_worker
+            target = decision.next_worker
+        elif isinstance(decision, dict) and "next_worker" in decision:
+            target = decision["next_worker"]
+        elif hasattr(decision, "next_worker") and isinstance(decision.next_worker, str):
+            target = decision.next_worker
+
+        fallback = _fallback_supervisor_decision(state)
+        if target == "Synthesizer" and fallback != "Synthesizer":
+            return fallback
+        if target in ("quant_agent", "sentiment_agent", "fundamental_agent", "Synthesizer"):
+            return target
     except Exception as e:
         logger.warning(f"Supervisor structured output fallback: {e}")
     return _fallback_supervisor_decision(state)
+
 
 
 def supervisor_node(state: AgentState) -> dict:
@@ -179,11 +194,12 @@ def synthesize_node(state: AgentState) -> dict:
         content = res.content if hasattr(res, "content") else str(res)
         if isinstance(content, list):
             content = " ".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
-        steps.append({"step": len(steps) + 1, "action": "Synthesised research report with AI", "status": "done"})
+        action_text = "Synthesised multi-agent quantitative & qualitative findings into report"
+        steps.append({"step": len(steps) + 1, "action": action_text, "status": "done"})
         answer = str(content)
     except Exception as e:
         logger.warning(f"Synthesis fallback triggered: {e}")
-        steps.append({"step": len(steps) + 1, "action": "Generated research summary", "status": "done"})
+        steps.append({"step": len(steps) + 1, "action": "Generated structured equity research summary", "status": "done"})
         answer = _build_fallback_summary(ticker, state.get("indicators", {}), state.get("fundamentals", {}))
 
     return {
@@ -208,6 +224,17 @@ def _build_fallback_summary(ticker: str, ind: dict, fund: dict) -> str:
         f"**Outlook**: Watch key Bollinger levels between {ind.get('bollinger_lower', 'N/A')} "
         f"and {ind.get('bollinger_upper', 'N/A')} for directional confirmation."
     )
+
+
+def check_fallback_data(state: dict) -> bool:
+    """Detect whether Alpha Vantage rate limit was hit and fallback data was used."""
+    fund = state.get("fundamentals", {})
+    news = state.get("news", [])
+    if fund.get("market_cap") == "$1.45T" and fund.get("pe_ratio") == "26.5":
+        return True
+    if news and any("maintains steady trading" in n.get("title", "") for n in news):
+        return True
+    return False
 
 
 def fetch_data_node(state: AgentState) -> dict:

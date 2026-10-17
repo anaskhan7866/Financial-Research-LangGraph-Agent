@@ -118,39 +118,44 @@ async function runAgent(ticker, query) {
   hideEl(resultsSec);
   hideEl(historySec);
   hideEl(watchlistSec);
+  hideEl(document.getElementById("rateLimitBanner"));
   showEl(progressSec);
   stepsList.innerHTML = "";
   agentSpinner.classList.remove("done");
-  progressTitle.textContent = "Agent is thinking…";
+  agentSpinner.style.borderColor = "";
+  agentSpinner.style.borderTopColor = "";
+  progressTitle.textContent = `Analyzing $${ticker} with multi-agent workflow…`;
   runBtn.disabled = true;
 
   try {
-    const fakeSteps = [
-      `Searching ticker for "${ticker}"`,
-      "Fetching daily OHLCV price data",
-      "Computing RSI, MACD & Bollinger Bands",
-      "Fetching latest news & sentiment",
-      "Retrieving company fundamentals",
-      "Synthesising research report with AI",
-    ];
-
-    const fetchPromise = fetch("/analyze/", {
+    const res = await fetch("/analyze/", {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ ticker, query }),
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+      },
+      body: JSON.stringify({ ticker, query }),
     });
 
-    for (let i = 0; i < fakeSteps.length; i++) {
-      await delay(400);
-      addStep(i + 1, fakeSteps[i], false);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Unable to complete research analysis.");
     }
 
-    const res  = await fetchPromise;
-    const data = await res.json();
+    const contentType = res.headers.get("Content-Type") || "";
+    let data = null;
 
-    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    if (contentType.includes("text/event-stream") && res.body) {
+      data = await handleEventStream(res);
+    } else {
+      data = await res.json();
+      if (Array.isArray(data.steps)) {
+        data.steps.forEach((st, idx) => addStep(idx + 1, st.action, true));
+      }
+    }
 
-    await delay(150);
+    if (!data) throw new Error("No response payload received from research agent.");
+
     markAllStepsDone();
     agentSpinner.classList.add("done");
     progressTitle.textContent = "Research complete ✓";
@@ -161,12 +166,57 @@ async function runAgent(ticker, query) {
     showEl(resultsSec);
 
   } catch (err) {
-    progressTitle.textContent = `Error: ${err.message}`;
+    progressTitle.textContent = humanizeErrorMessage(err.message);
     agentSpinner.style.borderColor = "var(--red)";
     agentSpinner.style.borderTopColor = "var(--red)";
   } finally {
     runBtn.disabled = false;
   }
+}
+
+// ── SSE Event Stream Handler ────────────────────────────────────
+async function handleEventStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  let finalData = null;
+  let stepCount = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop();
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      const jsonStr = line.slice(5).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const payload = JSON.parse(jsonStr);
+        if (payload.type === "step" && payload.step) {
+          stepCount++;
+          updatePreviousStepsDone();
+          addStep(stepCount, payload.step.action, false);
+          progressTitle.textContent = payload.step.action;
+        } else if (payload.type === "complete") {
+          finalData = payload.data;
+        } else if (payload.type === "error") {
+          throw new Error(payload.error);
+        }
+      } catch (e) {
+        if (e.message && !e.message.includes("Unexpected end of JSON")) {
+          throw e;
+        }
+      }
+    }
+  }
+
+  return finalData;
 }
 
 // ── Render Results ──────────────────────────────────────────────
@@ -175,10 +225,22 @@ function renderResults(data) {
   document.getElementById("resultTicker").textContent = currentActiveTicker;
   document.getElementById("resultPrice").textContent  = data.indicators?.price || "—";
 
+  // Handle rate limit & fallback warning banner
+  const banner = document.getElementById("rateLimitBanner");
+  if (banner) {
+    if (data.is_fallback || data.warning) {
+      banner.textContent = data.warning || "⚠️ Alpha Vantage daily free limit reached. Displaying cached/modeled fallback data to keep your analysis uninterrupted.";
+      showEl(banner);
+    } else {
+      hideEl(banner);
+    }
+  }
+
   const signalEl = document.getElementById("resultSignal");
   const signal   = data.indicators?.signal || "Neutral";
   signalEl.textContent = signal;
   signalEl.className   = "result-signal " + signalClass(signal);
+
 
   updatePinButton();
   drawSparkline(sparklineCanvas, signal.toLowerCase().includes("bull"));
@@ -414,12 +476,41 @@ function addStep(num, text, done = false) {
   stepsList.appendChild(li);
 }
 
-function markAllStepsDone() {
-  document.querySelectorAll(".step-item").forEach(item => {
+function updatePreviousStepsDone() {
+  const items = stepsList.querySelectorAll(".step-item");
+  items.forEach(item => {
     item.classList.add("done");
-    item.querySelector(".step-num").textContent = "";
+    const numEl = item.querySelector(".step-num");
+    if (numEl) numEl.textContent = "";
   });
 }
+
+function markAllStepsDone() {
+  const items = document.querySelectorAll(".step-item");
+  items.forEach(item => {
+    item.classList.add("done");
+    const numEl = item.querySelector(".step-num");
+    if (numEl) numEl.textContent = "";
+  });
+}
+
+function humanizeErrorMessage(rawMessage = "") {
+  const msg = String(rawMessage).toLowerCase();
+  if (msg.includes("429") || msg.includes("quota") || msg.includes("rate limit") || msg.includes("resource_exhausted")) {
+    return "Market API daily request limit reached. Displaying available research context.";
+  }
+  if (msg.includes("503") || msg.includes("unavailable") || msg.includes("overloaded")) {
+    return "AI intelligence engine is temporarily experiencing high demand. Please retry in a moment.";
+  }
+  if (msg.includes("ticker") || msg.includes("not found")) {
+    return "Could not identify stock symbol. Please check ticker and try again.";
+  }
+  if (msg.includes("network") || msg.includes("failed to fetch")) {
+    return "Network connection interrupted. Please check connection and retry.";
+  }
+  return "Unable to complete research analysis at this time. Please try again.";
+}
+
 
 function shakeInput(el) {
   el.style.animation = "none";

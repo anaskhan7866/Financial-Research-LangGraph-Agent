@@ -17,9 +17,10 @@ Analyze conversation messages to determine the next worker to execute:
 - 'quant_agent': Fetches price history and computes technical indicators (RSI, MACD, Bollinger Bands).
 - 'fundamental_agent': Retrieves company financial profile and valuation metrics (P/E, EPS, Market Cap).
 - 'sentiment_agent': Gathers market news catalysts and sentiment scores.
-- 'Synthesizer': Final synthesizer. Select this ONLY when all necessary specialist data has been gathered, or if data is sufficient to answer the query.
+- 'Synthesizer': Final synthesizer. Select this ONLY after quant_agent, fundamental_agent, and sentiment_agent have all completed.
 
 Inspect the messages log to see which agents have completed their tasks."""
+
 
 
 SYNTHESIS_PROMPT = """Analyze the following financial research data for {ticker} and answer the user query: "{query}"

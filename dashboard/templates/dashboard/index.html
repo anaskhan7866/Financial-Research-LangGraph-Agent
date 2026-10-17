@@ -113,8 +113,14 @@
     <!-- ── RESULTS ──────────────────────────────────── -->
     <section class="results hidden" id="resultsSection">
 
+      <!-- Fallback / Rate Limit Warning Banner -->
+      <div class="warning-banner hidden" id="rateLimitBanner">
+        ⚠️ Alpha Vantage daily free limit reached. Displaying cached/modeled fallback data to keep your analysis uninterrupted.
+      </div>
+
       <!-- Ticker header -->
       <div class="result-header" id="resultHeader">
+
         <div class="result-ticker" id="resultTicker">AAPL</div>
         <div class="result-meta">
           <canvas id="priceSparkline" width="120" height="36" class="sparkline"></canvas>

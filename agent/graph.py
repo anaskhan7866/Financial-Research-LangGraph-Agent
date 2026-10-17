@@ -11,6 +11,7 @@ from agent.nodes import (
     sentiment_agent_node,
     fundamental_agent_node,
     synthesize_node,
+    check_fallback_data,
 )
 from agent.router import route_supervisor
 from agent.config import logger
@@ -68,6 +69,7 @@ def run_agent(query: str, ticker: str = "") -> dict:
         final_state = initial_state
         final_state["final_answer"] = f"Analysis could not be completed: {str(e)}"
 
+    is_fallback = check_fallback_data(final_state)
     return {
         "ticker": final_state.get("ticker", "AAPL"),
         "query": final_state.get("query", query),
@@ -76,4 +78,10 @@ def run_agent(query: str, ticker: str = "") -> dict:
         "indicators": final_state.get("indicators", {}),
         "news": final_state.get("news", []),
         "summary": final_state.get("final_answer", "No summary generated."),
+        "is_fallback": is_fallback,
+        "warning": (
+            "⚠️ Alpha Vantage daily free limit reached. Displaying cached/modeled fallback data to keep your analysis uninterrupted."
+            if is_fallback else None
+        ),
     }
+

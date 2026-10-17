@@ -478,8 +478,26 @@ body {
 
 .step-item.done .step-num::after { content: "✓"; }
 
+/* ── Warning Banner ─────────────────────────────────────────────── */
+.warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 14px 20px;
+  color: #fbbf24;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.08);
+  animation: fadeSlide 0.3s ease forwards;
+}
+
 /* ── Results ────────────────────────────────────────────────────── */
 .results {
+
   margin: 24px 32px 0;
   display: flex;
   flex-direction: column;
